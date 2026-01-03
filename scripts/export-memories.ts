@@ -3,6 +3,12 @@
  * Export memories matching a search query to a portable JSON format
  * Usage: npx tsx scripts/export-memories.ts <query> <output-file> [--project=name]
  * Example: npx tsx scripts/export-memories.ts "windows" windows-memories.json --project=claude-mem
+ *
+ * DUPLICATE DETECTION SUPPORT:
+ * - Includes sdk_session_id field in observations and summaries (mapped from sdk_sessions)
+ * - Normalizes NULL/empty titles to "(untitled)" for reliable SQL comparison
+ * - Import duplicate detection uses composite key: sdk_session_id + title + created_at_epoch
+ * - Ensures reliable duplicate prevention on re-import
  */
 
 import { writeFileSync } from 'fs';
@@ -75,6 +81,39 @@ async function exportMemories(query: string, outputFile: string, project?: strin
       }
     }
     console.log(`✅ Found ${sessions.length} SDK sessions`);
+
+    // Enrich observations with sdk_session_id for duplicate detection
+    // Import duplicate detection uses composite key: sdk_session_id + title + created_at_epoch
+    const sessionMap = new Map<string, string>();
+    sessions.forEach((session) => {
+      sessionMap.set(session.memory_session_id, session.content_session_id);
+    });
+
+    let nullTitleCount = 0;
+    observations.forEach((obs) => {
+      // Add sdk_session_id from session mapping
+      if (obs.memory_session_id && sessionMap.has(obs.memory_session_id)) {
+        obs.sdk_session_id = sessionMap.get(obs.memory_session_id);
+      }
+
+      // Fix NULL/empty titles for duplicate detection
+      // Import fails to detect duplicates when title is NULL (NULL != NULL in SQL)
+      if (!obs.title || obs.title.trim() === '') {
+        obs.title = '(untitled)';
+        nullTitleCount++;
+      }
+    });
+
+    if (nullTitleCount > 0) {
+      console.log(`⚠️  Fixed ${nullTitleCount} NULL/empty titles for duplicate detection`);
+    }
+
+    // Also enrich summaries with sdk_session_id
+    summaries.forEach((summary) => {
+      if (summary.memory_session_id && sessionMap.has(summary.memory_session_id)) {
+        summary.sdk_session_id = sessionMap.get(summary.memory_session_id);
+      }
+    });
 
     // Create export data
     const exportData: ExportData = {
