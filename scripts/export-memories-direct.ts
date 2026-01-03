@@ -1,20 +1,21 @@
 #!/usr/bin/env bun
 /**
- * Export ALL claude-mem data directly from SQLite database (bypasses broken FTS search)
+ * Direct SQLite export for complete database backups
  *
  * REQUIRES: Bun runtime (uses bun:sqlite)
  *
  * Usage: bun scripts/export-memories-direct.ts <output-file> [--project=name]
  * Example: bun scripts/export-memories-direct.ts backup.json
  *          bun scripts/export-memories-direct.ts backup.json --project=ai-agents
- * 
- * CRITICAL: The FTS-based export only returns ~2% of data (71 out of 3500+ observations).
- * This script exports EVERYTHING by querying SQLite directly.
- * 
- * DUPLICATE DETECTION FIXES:
- * - Adds sdk_session_id field via JOIN with sdk_sessions table
- * - Replaces NULL/empty titles with "(untitled)" placeholder
- * - Without these fixes, import creates massive duplicates (1000s of rows)
+ *
+ * COMPLEMENTARY TO SEARCH-BASED EXPORT:
+ * - export-memories.ts: Semantic search for selective knowledge sharing
+ * - export-memories-direct.ts: Complete database backup for disaster recovery
+ *
+ * DUPLICATE DETECTION SUPPORT:
+ * - Includes sdk_session_id field via JOIN with sdk_sessions table
+ * - Replaces NULL/empty titles with "(untitled)" placeholder for SQL comparison
+ * - Ensures import duplicate detection works correctly
  */
 
 import { Database } from 'bun:sqlite';

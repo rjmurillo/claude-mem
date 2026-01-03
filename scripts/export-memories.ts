@@ -4,11 +4,11 @@
  * Usage: npx tsx scripts/export-memories.ts <query> <output-file> [--project=name]
  * Example: npx tsx scripts/export-memories.ts "windows" windows-memories.json --project=claude-mem
  *
- * DUPLICATE DETECTION FIXES:
- * - Adds sdk_session_id field to observations and summaries (mapped from sdk_sessions)
- * - Replaces NULL/empty titles with "(untitled)" placeholder
- * - Import duplicate detection uses: sdk_session_id + title + created_at_epoch
- * - Without these fixes, import creates massive duplicates (1000s of rows)
+ * DUPLICATE DETECTION SUPPORT:
+ * - Includes sdk_session_id field in observations and summaries (mapped from sdk_sessions)
+ * - Replaces NULL/empty titles with "(untitled)" placeholder for SQL comparison
+ * - Import duplicate detection uses composite key: sdk_session_id + title + created_at_epoch
+ * - Ensures reliable duplicate prevention on re-import
  */
 
 import { writeFileSync } from 'fs';
