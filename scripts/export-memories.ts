@@ -3,6 +3,12 @@
  * Export memories matching a search query to a portable JSON format
  * Usage: npx tsx scripts/export-memories.ts <query> <output-file> [--project=name]
  * Example: npx tsx scripts/export-memories.ts "windows" windows-memories.json --project=claude-mem
+ *
+ * DUPLICATE DETECTION FIXES:
+ * - Adds sdk_session_id field to observations and summaries (mapped from sdk_sessions)
+ * - Replaces NULL/empty titles with "(untitled)" placeholder
+ * - Import duplicate detection uses: sdk_session_id + title + created_at_epoch
+ * - Without these fixes, import creates massive duplicates (1000s of rows)
  */
 
 import { writeFileSync } from 'fs';
@@ -13,10 +19,11 @@ import { SettingsDefaultsManager } from '../src/shared/SettingsDefaultsManager';
 interface ObservationRecord {
   id: number;
   memory_session_id: string;
+  sdk_session_id?: string; // Added for duplicate detection on import
   project: string;
   text: string | null;
   type: string;
-  title: string;
+  title: string | null; // Changed to allow null for proper handling
   subtitle: string | null;
   facts: string | null;
   narrative: string | null;
@@ -45,6 +52,7 @@ interface SdkSessionRecord {
 interface SessionSummaryRecord {
   id: number;
   memory_session_id: string;
+  sdk_session_id?: string; // Added for duplicate detection on import
   project: string;
   request: string | null;
   investigated: string | null;
@@ -142,6 +150,39 @@ async function exportMemories(query: string, outputFile: string, project?: strin
       }
     }
     console.log(`✅ Found ${sessions.length} SDK sessions`);
+
+    // Enrich observations with sdk_session_id for duplicate detection
+    // Import duplicate detection uses composite key: sdk_session_id + title + created_at_epoch
+    const sessionMap = new Map<string, string>();
+    sessions.forEach((session) => {
+      sessionMap.set(session.memory_session_id, session.content_session_id);
+    });
+
+    let nullTitleCount = 0;
+    observations.forEach((obs) => {
+      // Add sdk_session_id from session mapping
+      if (obs.memory_session_id && sessionMap.has(obs.memory_session_id)) {
+        obs.sdk_session_id = sessionMap.get(obs.memory_session_id);
+      }
+
+      // Fix NULL/empty titles for duplicate detection
+      // Import fails to detect duplicates when title is NULL (NULL != NULL in SQL)
+      if (!obs.title || obs.title.trim() === '') {
+        obs.title = '(untitled)';
+        nullTitleCount++;
+      }
+    });
+
+    if (nullTitleCount > 0) {
+      console.log(`⚠️  Fixed ${nullTitleCount} NULL/empty titles for duplicate detection`);
+    }
+
+    // Also enrich summaries with sdk_session_id
+    summaries.forEach((summary) => {
+      if (summary.memory_session_id && sessionMap.has(summary.memory_session_id)) {
+        summary.sdk_session_id = sessionMap.get(summary.memory_session_id);
+      }
+    });
 
     // Create export data
     const exportData: ExportData = {
